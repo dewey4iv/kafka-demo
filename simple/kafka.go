@@ -38,23 +38,6 @@ type Kafka struct {
 	quitCh         chan struct{}
 }
 
-func (k *Kafka) timer() {
-
-	ticker := time.NewTicker(time.Second * 5)
-
-	for {
-		select {
-		case <-ticker.C:
-			for i := 0; i < int(k.totalConsumers); i++ {
-				k.writeSig <- struct{}{}
-			}
-		case <-k.quitCh:
-			ticker.Stop()
-			return
-		}
-	}
-}
-
 // Start starts the connections to a kafka instance
 func (k *Kafka) Start() error {
 	topics, err := k.consumer.Topics()
@@ -125,4 +108,21 @@ func (k *Kafka) Stop() error {
 	k.quitCh <- struct{}{}
 
 	return nil
+}
+
+func (k *Kafka) timer() {
+
+	ticker := time.NewTicker(time.Second * 5)
+
+	for {
+		select {
+		case <-ticker.C:
+			for i := 0; i < int(k.totalConsumers); i++ {
+				k.writeSig <- struct{}{}
+			}
+		case <-k.quitCh:
+			ticker.Stop()
+			return
+		}
+	}
 }
