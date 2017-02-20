@@ -25,6 +25,7 @@ type CSVOffsetWriter struct {
 	filepath string
 }
 
+// ReadOffset looks up the offest given a topic and partition
 func (ow *CSVOffsetWriter) ReadOffset(topic string, partition int32) (int64, error) {
 	ow.mu.Lock()
 	m, err := ow.read()

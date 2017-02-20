@@ -1,8 +1,8 @@
 package main
 
 import (
-	"fmt"
 	"log"
+	"sync/atomic"
 	"time"
 
 	"github.com/Shopify/sarama"
@@ -27,14 +27,14 @@ func New(opts ...Option) (*Kafka, error) {
 	return &k, nil
 }
 
-// Kafka is a wrapper
+// Kafka is a wrapper around a sarama.Consumer
 type Kafka struct {
 	consumer       sarama.Consumer
 	writeSig       chan struct{}
 	funcs          map[string]func(*sarama.ConsumerMessage) error
 	offsetWriter   OffsetWriter
 	stream         chan *sarama.ConsumerMessage
-	totalConsumers int
+	totalConsumers int64
 	quitCh         chan struct{}
 }
 
@@ -45,7 +45,7 @@ func (k *Kafka) timer() {
 	for {
 		select {
 		case <-ticker.C:
-			for i := 0; i < k.totalConsumers; i++ {
+			for i := 0; i < int(k.totalConsumers); i++ {
 				k.writeSig <- struct{}{}
 			}
 		case <-k.quitCh:
@@ -55,13 +55,12 @@ func (k *Kafka) timer() {
 	}
 }
 
+// Start starts the connections to a kafka instance
 func (k *Kafka) Start() error {
 	topics, err := k.consumer.Topics()
 	if err != nil {
 		return err
 	}
-
-	fmt.Println(topics)
 
 	for _, topic := range topics {
 		if fn, ok := k.funcs[topic]; ok {
@@ -90,7 +89,7 @@ func (k *Kafka) Start() error {
 					for {
 						select {
 						case <-k.writeSig:
-							log.Printf("::: Attempting Offset Write :::")
+							// log.Printf("::: Attempting Offset Write :::")
 							if err := k.offsetWriter.WriteOffset(rm.Topic, rm.Partition, rm.Offset); err != nil {
 								log.Printf("Error writing to offest writer: %s", err.Error())
 							}
@@ -100,8 +99,11 @@ func (k *Kafka) Start() error {
 								log.Printf("Error writing message: %s", err.Error())
 							}
 						case err := <-input.Errors():
+							// TODO: this should be handled better -- but this is just a demo, so we just log the error.
 							log.Println(err)
 						case <-k.quitCh:
+							atomic.AddInt64(&k.totalConsumers, -1)
+
 							if err := input.Close(); err != nil {
 								// TODO: handle this later
 								// c.errCh <- err
@@ -118,6 +120,7 @@ func (k *Kafka) Start() error {
 	return nil
 }
 
+// Stop gracefully stops the kafka subscriptions
 func (k *Kafka) Stop() error {
 	k.quitCh <- struct{}{}
 

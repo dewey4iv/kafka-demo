@@ -35,6 +35,7 @@ func (opt *withDefaults) Apply(k *Kafka) error {
 	return nil
 }
 
+// WithFuncMap takes a map[string]func(*Message) error to be used by the Kafka instance
 func WithFuncMap(funcs map[string]func(*sarama.ConsumerMessage) error) Option {
 	return &withFuncMap{funcs}
 }
