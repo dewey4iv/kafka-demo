@@ -45,26 +45,37 @@ func (k *Kafka) Start() error {
 		return err
 	}
 
+	// loop over all topics
 	for _, topic := range topics {
+
+		// check if there's a registered func for the topic
 		if fn, ok := k.funcs[topic]; ok {
+
+			// get partitions
 			partitions, err := k.consumer.Partitions(topic)
 			if err != nil {
 				return err
 			}
 
+			// start listener for each partition
 			for _, partition := range partitions {
 
+				// get the last offset or the newset record
 				offset, err := k.offsetWriter.ReadOffset(topic, partition)
 				if err != nil {
 					offset = sarama.OffsetNewest
+					// we could also choose to use oldest
+					// offset = sarama.OffsetOldest
 				}
 
+				// setup input stream from kafka
 				input, err := k.consumer.ConsumePartition(topic, partition, offset)
 				if err != nil {
 					return err
 				}
 
 				log.Printf("Starting %s - %d @ offset %d", topic, partition, offset)
+
 				k.totalConsumers++
 				go func(input sarama.PartitionConsumer, fn func(*sarama.ConsumerMessage) error) {
 					var rm *sarama.ConsumerMessage
@@ -78,6 +89,7 @@ func (k *Kafka) Start() error {
 							}
 						case message := <-input.Messages():
 							rm = message
+
 							if err := fn(message); err != nil {
 								log.Printf("Error writing message: %s", err.Error())
 							}
@@ -110,6 +122,8 @@ func (k *Kafka) Stop() error {
 	return nil
 }
 
+// timer is responsible for triggering a signal to persist
+// the offset of each worker to the offsetWriter.
 func (k *Kafka) timer() {
 
 	ticker := time.NewTicker(time.Second * 5)
